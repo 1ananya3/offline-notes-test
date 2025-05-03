@@ -6,7 +6,16 @@ export default async function handler(req, res) {
       const connection = await pool.getConnection();
       try {
         const [notes] = await connection.query(
-          'SELECT * FROM notes ORDER BY created_at DESC'
+          `SELECT 
+            id, 
+            title, 
+            content, 
+            local_id as localId, 
+            DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.000Z') as createdAt,
+            DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%s.000Z') as updatedAt,
+            tags 
+          FROM notes 
+          ORDER BY created_at DESC`
         );
         res.status(200).json(notes);
       } finally {

@@ -4,13 +4,14 @@ import SyncIndicator from './SyncIndicator'
 import { Note } from '../utils/notes'
 import { Button } from '../styles/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExclamationCircle, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faExclamationCircle, faTimes, faPen, faCheck, faTimes as faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { TAG_COLORS, tagColorMap, assignTagColors } from '../utils/tagColors';
 
 const NoteItemWrapper = styled.div`
   margin-bottom: 1rem;
 `;
 
-const NoteFrame = styled.li<{ isSubmitted?: boolean }>`
+const NoteFrame = styled.li<{ isSubmitted?: boolean; borderColor: string }>`
   position: relative;
   display: flex;
   flex-direction: column;
@@ -20,18 +21,23 @@ const NoteFrame = styled.li<{ isSubmitted?: boolean }>`
   border: 1px solid #ccc;
   border-radius: 4px;
   margin-bottom: 0.25rem;
+  margin-right: 2rem;
   max-height: none;
   overflow-y: auto;
-  width: 500px;
+  width: 690px;
   word-wrap: break-word;
   overflow: visible;
   background-color: ${props => (!props.isSubmitted ? '#eee' : 'transparent')};
+  border-left: 12px solid ${props => props.borderColor};
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
 
   .note-timestamp {
     position: absolute;
     bottom: 0;
     left: 0;
     margin: 0.5rem;
+    margin-top: 1.2rem;
     font-size: 0.8rem;
     color: #888;
   }
@@ -86,16 +92,22 @@ const TagsContainer = styled.div`
   gap: 0.5rem;
   margin-top: 0.5rem;
   width: 100%;
+  margin-bottom: 1rem;
 `;
 
-const Tag = styled.span`
-  background-color: #e2e8f0;
-  padding: 0.25rem 0.5rem;
+const Tag = styled.span<{ tagText: string }>`
+  background-color: ${props => tagColorMap[props.tagText] || TAG_COLORS[0]};
+  color: #333;
+  padding: 0.25rem 1rem;
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: 0.95em;
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.4em;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.07);
+  border: none;
+  margin-bottom: 2px;
 `;
 
 const TagInput = styled.input`
@@ -116,34 +128,91 @@ const RemoveTagButton = styled.button`
   line-height: 1;
 `;
 
-const SaveButton = styled(Button)`
-  padding: 5px 10px;
-  font-size: 0.8rem;
+const SaveButton = styled.button`
+  width: 25px;
+  height: 25px;
+  background: #36b8d9;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  transition: background 0.2s, box-shadow 0.2s;
+  margin-right: 10px;
+  &:hover {
+    background: #249bb7;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
 `;
 
-const CancelButton = styled(Button)`
-  padding: 5px 10px;
-  font-size: 0.8rem;
+const CancelButton = styled.button`
+  width: 25px;
+  height: 25px;
+  background: #b0b8c1;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  transition: background 0.2s, box-shadow 0.2s;
+  &:hover {
+    background: #8a929a;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
 `;
 
 const DeleteButton = styled.button`
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  background: none;
+  width: 25px;
+  height: 25px;
+  background: #36b8d9;
   border: none;
-  color: rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1rem;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  transition: background 0.2s, box-shadow 0.2s;
+  &:hover {
+    background: #249bb7;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
 `;
 
-const EditButton = styled(Button)`
+const EditButton = styled.button`
   position: absolute;
-  padding: 5px 10px;
-  bottom: 0.5rem;
-  right: 0.5rem;
-  font-size: 0.8rem;
+  top: 0.5rem;
+  right: 40px;
+  width: 25px;
+  height: 25px;
+  background: #36b8d9;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  transition: background 0.2s, box-shadow 0.2s;
+  &:hover {
+    background: #249bb7;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
 `;
 
 const OfflineIndicatorWrapper = styled.div`
@@ -186,9 +255,26 @@ const ContentInput = styled.textarea`
   margin-bottom: 0.5rem;
 `;
 
+const NoteTitle = styled.div`
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 0.5rem;
+  font-family: inherit;
+`;
+
+const NoteContent = styled.div`
+  font-size: 1.05rem;
+  color: #888;
+  font-style: italic;
+  opacity: 0.85;
+  letter-spacing: 0.01em;
+  font-family: inherit;
+`;
+
 interface NoteItemProps {
   note: Note,
-  onDeleteNote: (noteId: number) => Promise<void>;
+  onDeleteNote: (noteId: string) => Promise<void>;
   onEditNote: (noteId: string, updatedTitle: string, updatedContent: string, updatedTags: string[]) => Promise<void>;
 }
 
@@ -201,16 +287,27 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
   const [newTag, setNewTag] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  useEffect(() => {
+    // Ensure note has a localId when component mounts
+    if (!note.localId) {
+      console.error('Note missing localId:', note);
+      // Generate a new localId if missing
+      note.localId = crypto.randomUUID();
+      console.log('Generated new localId:', note.localId);
+    }
+  }, [note]);
+
   const handleDelete = async () => {
-    if (!note.id) {
-      console.error('No note ID found');
+    if (!note.localId) {
+      console.error('No localId found for note:', note);
+      alert('Cannot delete note: Missing identifier');
       return;
     }
 
     setSyncing(true);
     try {
-      console.log('Deleting note with ID:', note.id);
-      await onDeleteNote(note.id);
+      console.log('Deleting note with localId:', note.localId);
+      await onDeleteNote(note.localId);
       setIsEditing(false);
     } catch (error) {
       console.error('Error deleting note:', error);
@@ -228,15 +325,15 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
   };
 
   const handleSave = async () => {
-    if (!note.id) {
+    if (!note.localId) {
       console.error('No localId found for note');
       return;
     }
 
     setSyncing(true);
     try {
-      console.log('Saving note:', { noteId: note.id, title, content, tags });
-      await onEditNote(note.id, title, content, tags);
+      console.log('Saving note:', { localId: note.localId, title, content, tags });
+      await onEditNote(note.localId, title, content, tags);
       console.log('Note saved successfully');
       
       // Update the note object with new values
@@ -286,12 +383,36 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
     }
   }, [isEditing, title]);
 
+  assignTagColors(tags);
+
+  const getNoteBorderColor = (tags: string[]) => {
+    if (tags && tags.length > 0) {
+      return tagColorMap[tags[0]] || TAG_COLORS[0];
+    }
+    return '#fbbf24'; // default orange if no tags
+  };
+
   return (
     <NoteItemWrapper>
-      <NoteFrame isSubmitted={note.id !== undefined}>
+      <NoteFrame isSubmitted={note.localId !== undefined} borderColor={getNoteBorderColor(tags)}>
         {isSyncing && <SyncIndicator/>}
-        <DeleteButton onClick={handleDelete}>[x]</DeleteButton>
-        <p className="note-timestamp">{new Date(note.createdAt).toUTCString()}</p>
+        {!isEditing && (
+          <EditButton onClick={handleEdit}>
+            <FontAwesomeIcon icon={faPen} />
+          </EditButton>
+        )}
+        <DeleteButton onClick={handleDelete}>
+          <FontAwesomeIcon icon={faTrash} />
+        </DeleteButton>
+        <p className="note-timestamp">
+          {new Date(note.createdAt).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}
+        </p>
         <div className="note-content">
           {isEditing ? (
             <>
@@ -310,8 +431,8 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
             </>
           ) : (
             <>
-              <Content>{note.title}</Content>
-              {note.content && <Content>{note.content}</Content>}
+              <NoteTitle>{note.title}</NoteTitle>
+              {note.content && <NoteContent>{note.content}</NoteContent>}
             </>
           )}
         </div>
@@ -319,7 +440,7 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
           {isEditing ? (
             <>
               {tags.map(tag => (
-                <Tag key={tag}>
+                <Tag key={tag} tagText={tag}>
                   {tag}
                   <RemoveTagButton onClick={() => removeTag(tag)}>
                     <FontAwesomeIcon icon={faTimes} />
@@ -335,18 +456,24 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
               />
             </>
           ) : (
-           
-          (Array.isArray(tags) ? tags : []).map(tag => <Tag key={tag}>{tag}</Tag>)
-
-         ) }
+            (Array.isArray(tags) ? tags : []).map(tag => (
+              <Tag key={tag} tagText={tag}>{tag}</Tag>
+            ))
+          )}
         </TagsContainer>
         {isEditing ? (
           <div className="edit-buttons">
-            <SaveButton onClick={handleSave}>Save</SaveButton>
-            <CancelButton onClick={handleCancel}>Cancel</CancelButton>
+            <SaveButton onClick={handleSave} title="Save">
+              <FontAwesomeIcon icon={faCheck} />
+            </SaveButton>
+            <CancelButton onClick={handleCancel} title="Cancel">
+              <FontAwesomeIcon icon={faTimesCircle} />
+            </CancelButton>
           </div>
         ) : (
-          <EditButton onClick={handleEdit}>Edit</EditButton>
+          <EditButton onClick={handleEdit}>
+            <FontAwesomeIcon icon={faPen} />
+          </EditButton>
         )}
       </NoteFrame>
       {navigator.onLine && (
@@ -363,7 +490,7 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onDeleteNote, onEditNote }) =
               <OfflineIndicatorText>Note edit not synced</OfflineIndicatorText>
             </OfflineIndicator>
           )}
-          {note.id === undefined && note.localEditSynced !== false && (
+          {note.localId === undefined && note.localEditSynced !== false && (
             <OfflineIndicator>
               <OfflineIndicatorIcon icon={faExclamationCircle} />
               <OfflineIndicatorText>Note submission not synced</OfflineIndicatorText>

@@ -3,18 +3,18 @@ import pool from '../../lib/db';
 export default async function handler(req, res) {
   if (req.method === 'PUT') {
     try {
-      const { id } = req.query;
+      const { local_id } = req.query;
       const { title, content, tags } = req.body;
 
-      if (!id || !title) {
-        return res.status(400).json({ error: 'Missing note ID or title' });
+      if (!local_id || !title) {
+        return res.status(400).json({ error: 'Missing note local_id or title' });
       }
 
       const connection = await pool.getConnection();
       try {
         const [result] = await connection.query(
-          'UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = NOW() WHERE id = ?',
-          [title, content || '', JSON.stringify(tags || []), id]
+          'UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = NOW() WHERE local_id = ?',
+          [title, content || '', JSON.stringify(tags || []), local_id]
         );
 
         if (result.affectedRows === 0) {
@@ -22,8 +22,8 @@ export default async function handler(req, res) {
         }
 
         const [updatedNote] = await connection.query(
-          'SELECT * FROM notes WHERE id = ?',
-          [id]
+          'SELECT * FROM notes WHERE local_id = ?',
+          [local_id]
         );
 
         res.status(200).json(updatedNote[0]);
