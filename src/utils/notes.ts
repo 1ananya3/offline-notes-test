@@ -8,142 +8,220 @@ import {
 } from '../../public/indexeddb';
 
 export interface Note {
-  _id?: number; // Used by datastore
+  id?: number; // Used by datastore
   localId?: string;
-  tags: string[],
+
   localDeleteSynced?: boolean;
   localEditSynced?: boolean;
 
   title: string;
+  content?: string;
+  tags?: string[];
   createdAt: Date;
 }
 
 function createServerNote(note: Note) {
   const serverNote: Note = {
     title: note.title,
-    localId: note.localId,
-    createdAt: note.createdAt,
+    content: note.content,
     tags: note.tags,
+    localId: note.localId,
+    createdAt: note.createdAt
   }
   return serverNote
 }
 
-export function createNote(noteTitle: string, tags: string[]): Note {
+export function createNote(noteTitle: string, content: string = '', tags: string[] = []) {
   const note: Note = {
     title: noteTitle,
+    content: content,
+    tags: Array.isArray(tags) ? tags : [],
     localId: crypto.randomUUID(),
-    tags: [], 
-    createdAt: new Date() // Add the current timestamp
+    createdAt: new Date()
   };
   return note;
 }
 
 export async function submitNote(note: Note) {
-  // Store the note in IndexedDB first
+  // Store note locally first
   await storeOfflineNote(note);
 
-  // Check if the browser is online
   if (navigator.onLine) {
-    // Send a POST request to the save-note endpoint
     try {
+      console.log('Submitting note to server:', note);
       const response = await fetch('/api/save-note', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(createServerNote(note)),
+        body: JSON.stringify({
+          title: note.title,
+          content: note.content || '',
+          tags: Array.isArray(note.tags) ? note.tags : [],
+          localId: note.localId,
+          createdAt: note.createdAt
+        }),
       });
 
       if (response.ok) {
-        console.log('Note submitted successfully (API responded)');
-        // await response.json().then(async (data) => {
-          // TODO: Candidate should uncomment and potentially adjust this block
-          //       once the backend API is implemented and returns a real database ID.
-          //       This marks the note as synced by storing the backend ID locally.
-          // note._id = data.insertedId;
-          // await editOfflineNote(note);
-        // });
-
-        const data = await response.json();
-        note._id = data.insertedId;
+        const savedNote = await response.json();
+        console.log('Note submitted successfully:', savedNote);
+        
+        // Update the note with server ID and sync status
+        note.id = savedNote.id;
+        note.localEditSynced = undefined;
         await editOfflineNote(note);
+        
+        return savedNote;
       } else {
-        console.error('Failed to submit note');
+        console.error('Failed to submit note:', response.statusText);
+        note.localEditSynced = false;
+        await editOfflineNote(note);
+        throw new Error('Failed to submit note: ' + response.statusText);
       }
     } catch (error) {
       console.error('Failed to submit note:', error);
+      note.localEditSynced = false;
+      await editOfflineNote(note);
+      throw error;
     }
+  } else {
+    // Offline mode - mark as not synced
+    note.localEditSynced = false;
+    await editOfflineNote(note);
   }
 }
 
 export async function deleteNote(noteId: string) {
   try {
-    const note = await getOfflineNote(noteId);
-    if (note !== undefined) {
-      if (note._id === undefined) {
+    console.log('Starting delete operation for noteId:', noteId);
+    
+    // If online, try to delete from server first
+    if (navigator.onLine) {
+      try {
+        console.log('Online - attempting to delete from server with ID:', noteId);
+        
+        const response = await fetch(`/api/delete-note?id=${noteId}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Server returned ${response.status}`);
+        }
+
+        console.log('Successfully deleted from server');
+        
+        // After successful server deletion, delete from IndexedDB
         await deleteOfflineNote(noteId);
-      } else {
-        // Check if the browser is online
-        if (navigator.onLine) {
-          // Make a DELETE request to the API endpoint
-          try {
-            await deleteOfflineNote(noteId);
-            await axios.delete(`/api/delete-note?id=${note._id}`);
-          } catch (error) {
-            console.error('Error deleting note:', error);
-          }
-        } else {
+      } catch (error) {
+        console.error('Error deleting from server:', error);
+        // If server deletion fails, mark for sync later
+        const note = await getOfflineNote(noteId);
+        if (note) {
           note.localDeleteSynced = false;
           await editOfflineNote(note);
         }
+        throw error;
+      }
+    } else {
+      // Offline - mark for sync later
+      console.log('Offline - marking note for deletion sync later');
+      const note = await getOfflineNote(noteId);
+      if (note) {
+        note.localDeleteSynced = false;
+        await editOfflineNote(note);
       }
     }
   } catch (error) {
     console.error('Failed to delete note:', error);
+    throw error;
   }
 }
 
-export async function editNote(noteId: string, updatedTitle: string) {
+export async function editNote(noteId: string, updatedTitle: string, updatedContent: string, updatedTags: string[] = []) {
   try {
-    const note = await getOfflineNote(noteId);
-    if (note !== undefined) {
-      if (note._id === undefined) {
-        note.title = updatedTitle;
-        await editOfflineNote(note);
-      } else {
-        note.localEditSynced = false;
-        // Check if the browser is online
-        if (navigator.onLine) {
-          // Make a PUT request to the API endpoint
-          try {
-            await axios.put(`/api/edit-note?id=${note._id}`, { title: updatedTitle });
-            note.title = updatedTitle;
-            note.localEditSynced = undefined;
-            await editOfflineNote(note);
-          } catch (error) {
-            console.error('Error editing note:', error);
-          }
-        } else {
-          note.title = updatedTitle;
-          await editOfflineNote(note);
+    console.log('Starting edit operation for noteId:', noteId);
+    
+    // If online, try to update on server first
+    if (navigator.onLine) {
+      try {
+        console.log('Online - attempting to update on server with ID:', noteId);
+        
+        const response = await fetch(`/api/edit-note?id=${noteId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: updatedTitle,
+            content: updatedContent,
+            tags: updatedTags
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Server returned ${response.status}`);
         }
+
+        console.log('Successfully updated on server');
+        
+        // After successful server update, update in IndexedDB
+        const note = await getOfflineNote(noteId);
+        if (note) {
+          note.title = updatedTitle;
+          note.content = updatedContent;
+          note.tags = updatedTags;
+          note.localEditSynced = undefined;
+          await editOfflineNote(note);
+          console.log('Updated local storage after server sync');
+        }
+        return note;
+      } catch (error) {
+        console.error('Error updating on server:', error);
+        // If server update fails, mark for sync later
+        const note = await getOfflineNote(noteId);
+        if (note) {
+          note.title = updatedTitle;
+          note.content = updatedContent;
+          note.tags = updatedTags;
+          note.localEditSynced = false;
+          await editOfflineNote(note);
+          console.log('Marked note for sync later due to server error');
+        }
+        throw error;
       }
+    } else {
+      // Offline - mark for sync later
+      console.log('Offline - marking note for edit sync later');
+      const note = await getOfflineNote(noteId);
+      if (note) {
+        note.title = updatedTitle;
+        note.content = updatedContent;
+        note.tags = updatedTags;
+        note.localEditSynced = false;
+        await editOfflineNote(note);
+        console.log('Note saved locally and marked for sync when online');
+      }
+      return note;
     }
   } catch (error) {
     console.error('Failed to edit note:', error);
+    throw error;
   }
 }
 
 export async function updateSavedNote(serverNote: Note, localNotes: Note[]) {
   const matchingSyncedLocalNote = localNotes.find(
-    (localNote: Note) => localNote._id === serverNote._id
+    (localNote: Note) => localNote.id === serverNote.id
   );
   if (matchingSyncedLocalNote === undefined) {
     const matchingUnsyncedLocalNote = localNotes.find(
       (localNote: Note) => localNote.localId === serverNote.localId
     );
     if (matchingUnsyncedLocalNote !== undefined) {
-      matchingUnsyncedLocalNote._id = serverNote._id;
+      matchingUnsyncedLocalNote.id = serverNote.id;
       await editOfflineNote(matchingUnsyncedLocalNote);
     } else {
       serverNote.localId = crypto.randomUUID();
@@ -153,89 +231,181 @@ export async function updateSavedNote(serverNote: Note, localNotes: Note[]) {
 }
 
 export async function updateEditedNote(serverNote: Note, localNotes: Note[]) {
-  const matchingLocalNote = localNotes.find((localNote: Note) => localNote._id === serverNote._id);
+  const matchingLocalNote = localNotes.find((localNote: Note) => localNote.id === serverNote.id);
   if (matchingLocalNote !== undefined) {
     if (matchingLocalNote.localEditSynced === false) {
-      await axios.put(`/api/edit-note?id=${matchingLocalNote._id}`, { title: matchingLocalNote.title });
+      await axios.put(`/api/edit-note?id=${matchingLocalNote.id}`, { 
+        title: matchingLocalNote.title,
+        tags: matchingLocalNote.tags
+      });
       matchingLocalNote.localEditSynced = undefined;
       await editOfflineNote(matchingLocalNote);
     } else if (matchingLocalNote.localEditSynced === undefined) {
       matchingLocalNote.title = serverNote.title;
+      matchingLocalNote.tags = serverNote.tags;
       await editOfflineNote(matchingLocalNote);
     }
   }
 }
 
 export async function updateDeletedNote(serverId: number, localNotes: Note[]) {
-  const matchingLocalNote = localNotes.find((localNote: Note) => localNote._id === serverId);
+  const matchingLocalNote = localNotes.find((localNote: Note) => localNote.id === serverId);
   if (matchingLocalNote !== undefined) {
     await deleteOfflineNote(matchingLocalNote.localId);
   }
 }
 
-export async function refreshNotes() {
-  if (navigator.onLine) {
-    try {
-      const localNotes = await getOfflineNotes();
-      const response = await axios.get('/api/notes');
-      const serverNotes = response.data;
+// Helper functions for server operations
+const fetchNotesFromServer = async (): Promise<Note[]> => {
+  const response = await fetch('/api/notes');
+  if (!response.ok) throw new Error('Failed to fetch notes');
+  return response.json();
+};
 
-      for (const localNote of localNotes) {
-        if (localNote.localDeleteSynced === false) {
-          const matchingServerNote = serverNotes.find((serverNote: Note) => localNote._id === serverNote._id);
-          if (matchingServerNote !== undefined) {
-            await deleteOfflineNote(localNote.localId);
-            await axios.delete(`/api/delete-note?id=${localNote._id}`);
-          }
-        } else if (localNote._id === undefined) {
-          // Attempt to submit unsynced local note
-          try {
-            const submittedNoteResponse = await fetch('/api/save-note', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(createServerNote(localNote)),
-            });
+const deleteNoteFromServer = async (id: string): Promise<void> => {
+  const response = await fetch(`/api/delete-note?id=${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete note');
+};
 
-            if (submittedNoteResponse.ok) {
-              console.log(`Synced local note ${localNote.localId} during refresh.`);
-              // await submittedNoteResponse.json().then(async (data) => {
-                // TODO: Candidate should uncomment and potentially adjust this block
-                //       once the backend API is implemented and returns a real database ID.
-                // localNote._id = data.insertedId;
-                // await editOfflineNote(localNote);
-              // });
-              const data = await submittedNoteResponse.json();
-              localNote._id = data.insertedId;
-              await editOfflineNote(localNote);
-            } else {
-               console.error(`Failed to sync local note ${localNote.localId} during refresh:`, submittedNoteResponse.statusText);
-            }
-          } catch (error) {
-             console.error(`Error syncing local note ${localNote.localId} during refresh:`, error);
-          }
+const updateNoteOnServer = async (id: string, data: Partial<Note>): Promise<void> => {
+  const response = await fetch(`/api/edit-note?id=${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) throw new Error('Failed to update note');
+};
+
+// Helper functions for local storage operations
+const getLocalNotes = (): Note[] => {
+  const notes = localStorage.getItem('notes');
+  return notes ? JSON.parse(notes) : [];
+};
+
+const updateLocalNote = (localId: string, updates: Partial<Note>): void => {
+  const notes = getLocalNotes();
+  const updatedNotes = notes.map((note: Note) => 
+    note.localId === localId ? { ...note, ...updates } : note
+  );
+  localStorage.setItem('notes', JSON.stringify(updatedNotes));
+};
+
+const removeLocalNote = (localId: string): void => {
+  const notes = getLocalNotes();
+  const updatedNotes = notes.filter((note: Note) => note.localId !== localId);
+  localStorage.setItem('notes', JSON.stringify(updatedNotes));
+};
+
+export const refreshNotes = async (): Promise<void> => {
+  try {
+    if (!navigator.onLine) {
+      console.log('Offline - skipping refresh');
+      return;
+    }
+
+    // Get local notes that need syncing
+    const localNotes = getLocalNotes();
+    const unsyncedLocalNotes = localNotes.filter((note: Note) => 
+      !note.localEditSynced || !note.localDeleteSynced
+    );
+
+    if (unsyncedLocalNotes.length === 0) {
+      console.log('No notes to sync');
+      return;
+    }
+
+    // Get server notes to compare
+    const serverNotes = await fetchNotesFromServer();
+    
+    // Handle deletions first
+    const localDeleteNotes = localNotes.filter((note: Note) => note.localDeleteSynced === false);
+    for (const note of localDeleteNotes) {
+      if (note.id && note.localId) {
+        try {
+          await deleteNoteFromServer(String(note.id));
+          removeLocalNote(String(note.localId));
+        } catch (error) {
+          console.error('Error syncing deletion:', error);
         }
       }
-  
-      const updatedLocalNotes = await getOfflineNotes();
-      const updatedResponse = await axios.get('/api/notes');
-      const updatedServerNotes = updatedResponse.data;
-
-      for (const serverNote of updatedServerNotes) {
-        updateSavedNote(serverNote, updatedLocalNotes); // make sure to keep into account locally deleted notes
-        updateEditedNote(serverNote, updatedLocalNotes);
-      }
-    } catch (error) {
-      console.error('Error fetching notes:', error);
     }
-  }
-}
 
-export async function getNotes() {
-  const notes = await getOfflineNotes();
-  notes.sort(function(a: Note, b: Note) {
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
-  return notes;
-}
+    // Handle new and edited notes
+    for (const localNote of unsyncedLocalNotes) {
+      try {
+        if (localNote.id && localNote.localId) {
+          // Update existing note
+          await updateNoteOnServer(String(localNote.id), {
+            title: localNote.title,
+            content: localNote.content,
+            tags: localNote.tags
+          });
+          updateLocalNote(String(localNote.localId), { localEditSynced: true });
+        } else if (localNote.localId) {
+          // Create new note
+          const response = await fetch('/api/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: localNote.title,
+              content: localNote.content,
+              tags: localNote.tags
+            })
+          });
+          
+          if (!response.ok) throw new Error('Failed to create note');
+          
+          const savedNote = await response.json();
+          updateLocalNote(String(localNote.localId), {
+            id: savedNote.id,
+            localEditSynced: true
+          });
+        }
+      } catch (error) {
+        console.error('Error syncing note:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Error refreshing notes:', error);
+  }
+};
+
+export const getNotes = async (): Promise<Note[]> => {
+  try {
+    let serverNotes: Note[] = [];
+    
+    if (navigator.onLine) {
+      try {
+        serverNotes = await fetchNotesFromServer();
+      } catch (error) {
+        console.error('Error fetching server notes:', error);
+      }
+    }
+
+    const localNotes = getLocalNotes();
+    
+    // Only include unsynced local notes in the final list
+    const unsyncedLocalNotes = localNotes.filter((note: Note) => 
+      !note.localEditSynced || !note.localDeleteSynced
+    );
+
+    // Merge server notes with unsynced local notes
+    const mergedNotes = [...serverNotes];
+    
+    for (const localNote of unsyncedLocalNotes) {
+      if (localNote.id) {
+        const existingNoteIndex = mergedNotes.findIndex(n => n.id === localNote.id);
+        if (existingNoteIndex === -1) {
+          mergedNotes.push(localNote);
+        }
+      } else {
+        mergedNotes.push(localNote);
+      }
+    }
+
+    return mergedNotes;
+  } catch (error) {
+    console.error('Error getting notes:', error);
+    return getLocalNotes();
+  }
+};

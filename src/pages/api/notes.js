@@ -1,17 +1,17 @@
-import { db } from '../../lib/db'; 
+import pool from '../../lib/db';
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
-      // TODO: Implement logic to fetch notes from your chosen data store (e.g., MongoDB, PostgreSQL, JSON file).
-      // - Connect to the database/data source.
-      // - Fetch all notes.
-      // - Consider sorting notes, e.g., by creation date (descending).
-      // - Replace the example response below with the actual notes.
-
-      const notes = await db.query('SELECT * FROM all_notes ORDER BY updated_at DESC'); // Example empty array
-
-      res.status(200).json(notes);
+      const connection = await pool.getConnection();
+      try {
+        const [notes] = await connection.query(
+          'SELECT * FROM notes ORDER BY created_at DESC'
+        );
+        res.status(200).json(notes);
+      } finally {
+        connection.release();
+      }
     } catch (error) {
       console.error('Error fetching notes:', error);
       res.status(500).json({ error: 'Failed to fetch notes' });

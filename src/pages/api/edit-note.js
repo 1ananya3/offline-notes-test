@@ -1,29 +1,34 @@
-import { db } from '../../lib/db';
+import pool from '../../lib/db';
 
 export default async function handler(req, res) {
   if (req.method === 'PUT') {
     try {
-      const { id } = req.query; // ID of the note to edit (likely localId stored as _id by client)
-      const { title: noteTitle } = req.body; // New title
+      const { id } = req.query;
+      const { title, content, tags } = req.body;
 
-      if (!id || typeof noteTitle !== 'string') {
+      if (!id || !title) {
         return res.status(400).json({ error: 'Missing note ID or title' });
       }
 
-      // TODO: Implement logic to update the note in your chosen data store.
-      // - Connect to the database/data source.
-      // - Find the note by its unique identifier (`id`).
-      // - Update the note's title to `noteTitle`.
-      // - Handle the case where the note is not found.
-      // - Replace the example response below.
+      const connection = await pool.getConnection();
+      try {
+        const [result] = await connection.query(
+          'UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = NOW() WHERE id = ?',
+          [title, content || '', JSON.stringify(tags || []), id]
+        );
 
-      const [result] = await db.query('UPDATE all_notes SET title = ? WHERE local_id = ?', [noteTitle, id]);
-      const noteFound = result.affectedRows > 0; // Placeholder
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ error: 'Note not found' });
+        }
 
-      if (noteFound) {
-        res.status(200).json({ message: 'Note edited successfully' });
-      } else {
-        res.status(404).json({ error: 'Note not found' });
+        const [updatedNote] = await connection.query(
+          'SELECT * FROM notes WHERE id = ?',
+          [id]
+        );
+
+        res.status(200).json(updatedNote[0]);
+      } finally {
+        connection.release();
       }
     } catch (error) {
       console.error('Error editing note:', error);
