@@ -1,3 +1,4 @@
+import { db } from '../../lib/db';
 
 export default async function handler(req, res) {
   if (req.method === 'POST') {
@@ -14,8 +15,15 @@ export default async function handler(req, res) {
       // - Save the noteData object.
       // - Retrieve the unique identifier assigned by the data store (e.g., MongoDB _id, SQL primary key).
       // - Replace the example response below with the actual assigned identifier.
+      const {title,content='', tags=[], createdAt, updatedAt} = noteData;
+
+      await db.query(
+        'INSERT INTO all_notes (title, content, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        [title, content, JSON.stringify(tags), new Date(createdAt), updatedAt ? new Date(updatedAt) : new Date()]
+      );
       
-      const insertedId = noteData.localId; // Placeholder: Use localId as temporary example ID
+      
+      const insertedId = noteData.id; // Placeholder: Use localId as temporary example ID
 
       // Respond with the identifier the client expects
       res.status(200).json({ insertedId: insertedId });

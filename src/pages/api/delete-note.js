@@ -1,4 +1,4 @@
-
+import { db } from '../../lib/db';
 export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     try {
@@ -13,9 +13,8 @@ export default async function handler(req, res) {
       // - Find and delete the note by its unique identifier (`id`).
       // - Handle the case where the note is not found.
       // - Replace the example response below.
-
-      const noteFound = true; // Placeholder
-
+      const [result] = await db.query('DELETE FROM all_notes WHERE local_id = ?', [id]);
+      const noteFound = result.affectedRows > 0; 
       if (noteFound) {
         res.status(200).json({ message: 'Note deleted successfully' });
       } else {

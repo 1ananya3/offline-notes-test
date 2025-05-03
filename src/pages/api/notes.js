@@ -1,3 +1,5 @@
+import { db } from '../../lib/db'; 
+
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
@@ -7,7 +9,7 @@ export default async function handler(req, res) {
       // - Consider sorting notes, e.g., by creation date (descending).
       // - Replace the example response below with the actual notes.
 
-      const notes = []; // Example empty array
+      const notes = await db.query('SELECT * FROM all_notes ORDER BY updated_at DESC'); // Example empty array
 
       res.status(200).json(notes);
     } catch (error) {

@@ -1,3 +1,4 @@
+import { db } from '../../lib/db';
 
 export default async function handler(req, res) {
   if (req.method === 'PUT') {
@@ -16,7 +17,8 @@ export default async function handler(req, res) {
       // - Handle the case where the note is not found.
       // - Replace the example response below.
 
-      const noteFound = true; // Placeholder
+      const [result] = await db.query('UPDATE all_notes SET title = ? WHERE local_id = ?', [noteTitle, id]);
+      const noteFound = result.affectedRows > 0; // Placeholder
 
       if (noteFound) {
         res.status(200).json({ message: 'Note edited successfully' });

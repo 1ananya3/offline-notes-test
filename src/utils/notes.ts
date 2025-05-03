@@ -10,7 +10,7 @@ import {
 export interface Note {
   _id?: number; // Used by datastore
   localId?: string;
-
+  tags: string[],
   localDeleteSynced?: boolean;
   localEditSynced?: boolean;
 
@@ -22,15 +22,17 @@ function createServerNote(note: Note) {
   const serverNote: Note = {
     title: note.title,
     localId: note.localId,
-    createdAt: note.createdAt
+    createdAt: note.createdAt,
+    tags: note.tags,
   }
   return serverNote
 }
 
-export function createNote(noteTitle: string) {
+export function createNote(noteTitle: string, tags: string[]): Note {
   const note: Note = {
     title: noteTitle,
     localId: crypto.randomUUID(),
+    tags: [], 
     createdAt: new Date() // Add the current timestamp
   };
   return note;
@@ -61,6 +63,10 @@ export async function submitNote(note: Note) {
           // note._id = data.insertedId;
           // await editOfflineNote(note);
         // });
+
+        const data = await response.json();
+        note._id = data.insertedId;
+        await editOfflineNote(note);
       } else {
         console.error('Failed to submit note');
       }
@@ -200,6 +206,9 @@ export async function refreshNotes() {
                 // localNote._id = data.insertedId;
                 // await editOfflineNote(localNote);
               // });
+              const data = await submittedNoteResponse.json();
+              localNote._id = data.insertedId;
+              await editOfflineNote(localNote);
             } else {
                console.error(`Failed to sync local note ${localNote.localId} during refresh:`, submittedNoteResponse.statusText);
             }
